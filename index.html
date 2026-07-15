@@ -395,13 +395,14 @@ table.reg{width:100%;border-collapse:collapse;font-size:12.5px;background:#fff}
       <button class="btn gold" style="border:0" id="gBtnConn" onclick="gConnect()">🔑 Conectează Google Drive</button>
       <button onclick="gPushNow()">⬆ Salvează acum în Drive</button>
       <button onclick="gPullList()">⬇ Preia din Drive…</button>
+      <button onclick="gBackupDrive()">🗜 Backup .zip direct în Drive</button>
     </div>
     <div style="margin-top:8px;font-size:12.5px">
       <label style="display:flex;gap:8px;align-items:center;font-weight:600">
         <input type="checkbox" id="gAuto" style="width:18px;height:18px"> Sincronizare automată (salvează în Drive după fiecare modificare)
       </label>
     </div>
-    <p id="gStatus" style="font-size:12px;color:var(--ink2);margin-top:8px">Neconectat. Datele se salvează în spațiul ascuns al aplicației din contul tău Google (nu apar printre fișierele din Drive și nu ocupă vizibil spațiu).</p>
+    <p id="gStatus" style="font-size:12px;color:var(--ink2);margin-top:8px">Neconectat. Documentele (scanări, facturi, PV-uri) se salvează VIZIBIL în Drive: folderul „APARM Șantiere / numele șantierului / categoria". Conectarea rămâne salvată pe dispozitiv — nu mai alegi contul la fiecare acțiune.</p>
     <div id="gPullBox" style="display:none;margin-top:8px"></div>
   </div>
   <div class="card"><h3>Sincronizare prin Google Drive (manual, cu fișier .zip)</h3>
@@ -1518,43 +1519,98 @@ function arhZip(){
 }
 
 /* ================= SINCRONIZARE GOOGLE DRIVE ================= */
-var G={token:null,cid:localStorage.getItem('aparm_gcid')||'',auto:localStorage.getItem('aparm_gauto')==='1',timer:null,busy:false};
+var G_SCOPES='https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/drive.file';
+var G={token:null,exp:0,cid:localStorage.getItem('aparm_gcid')||'',auto:localStorage.getItem('aparm_gauto')==='1',timer:null,busy:false,fcache:{},pend:null};
+(function(){ // restaureaza sesiunea salvata (valabila ~1h)
+  try{
+    var t=JSON.parse(localStorage.getItem('aparm_gtok')||'null');
+    if(t&&t.exp>Date.now()+60000){ G.token=t.t; G.exp=t.exp; }
+  }catch(e){}
+})();
+function gTokenValid(){ return G.token&&G.exp>Date.now()+30000; }
+function gSaveTok(resp){
+  G.token=resp.access_token;
+  G.exp=Date.now()+((resp.expires_in||3600)-60)*1000;
+  localStorage.setItem('aparm_gtok',JSON.stringify({t:G.token,exp:G.exp}));
+  localStorage.setItem('aparm_gconsent','1');
+  localStorage.setItem('aparm_gscope',G_SCOPES);
+}
 function gUI(msg,ok){
   var el=document.getElementById('gStatus'); if(!el) return;
   el.innerHTML=msg; el.style.color=ok===false?'var(--bad)':(ok?'var(--ok)':'var(--ink2)');
 }
 function gInitUI(){
   var c=document.getElementById('gCid');
-  if(c){ c.value=G.cid; c.oninput=function(){ G.cid=c.value.trim(); localStorage.setItem('aparm_gcid',G.cid); }; }
+  if(c){ c.value=G.cid; c.oninput=function(){
+    var v=c.value.replace(/^https?:\/\//i,'').replace(/[\s\/]+/g,'').trim();
+    if(v!==c.value) c.value=v;
+    G.cid=v; localStorage.setItem('aparm_gcid',G.cid);
+  }; }
   var a=document.getElementById('gAuto');
   if(a){ a.checked=G.auto; a.onchange=function(){ G.auto=a.checked; localStorage.setItem('aparm_gauto',G.auto?'1':'0'); }; }
   if(G.token) gUI('✔ Conectat la Google Drive.',true);
 }
 function gReady(){ return typeof google!=='undefined'&&google.accounts&&google.accounts.oauth2; }
-function gConnect(){
-  if(location.protocol!=='https:'&&location.hostname!=='localhost'){ alert('Sincronizarea funcționează doar în varianta instalată/găzduită (adresa https), nu în fișierul local.'); return; }
+function gAuth(silent,next){
+  if(location.protocol!=='https:'&&location.hostname!=='localhost'){ alert('Sincronizarea funcționează doar în varianta instalată (adresa https), nu în fișierul local.'); return; }
   if(!G.cid){ alert('Completează întâi Client ID-ul Google (vezi ghidul de configurare).'); return; }
-  if(!gReady()){ alert('Serviciul Google nu s-a încărcat încă — verifică internetul și reîncearcă.'); return; }
+  if(!gReady()){ gUI('Serviciul Google nu s-a încărcat — verifică internetul.',false); return; }
+  // daca s-au schimbat permisiunile cerute, e nevoie de un consimtamant nou (o singura data)
+  var scopeVechi=localStorage.getItem('aparm_gscope')||'';
+  var consimtit=localStorage.getItem('aparm_gconsent')==='1'&&scopeVechi===G_SCOPES;
   try{
     var tc=google.accounts.oauth2.initTokenClient({
-      client_id:G.cid,
-      scope:'https://www.googleapis.com/auth/drive.appdata',
+      client_id:G.cid, scope:G_SCOPES,
       callback:function(resp){
-        if(resp&&resp.access_token){ G.token=resp.access_token; gUI('✔ Conectat. Sesiunea e valabilă ~1 oră; reconectezi cu un click când expiră.',true); }
-        else gUI('Conectare anulată.',false);
+        if(resp&&resp.access_token){
+          gSaveTok(resp);
+          gUI('✔ Conectat la Google Drive.',true);
+          if(next) next();
+        } else gUI('Conectare anulată.',false);
       }
     });
-    tc.requestAccessToken({prompt:G.token?'':'consent'});
+    tc.requestAccessToken({prompt:(silent&&consimtit)?'':(consimtit?'':'consent')});
   }catch(e){ gUI('Eroare la conectare: '+e.message,false); }
+}
+function gConnect(){ gAuth(false); }
+// asigura token valid; daca a expirat, il reia SILENTIOS (fara alegerea contului) si continua actiunea
+function gEnsureToken(next){
+  if(gTokenValid()) return next();
+  gAuth(true,next);
 }
 function gFetch(url,opt){
   opt=opt||{}; opt.headers=opt.headers||{};
   opt.headers['Authorization']='Bearer '+G.token;
   return fetch(url,opt).then(function(r){
-    if(r.status===401){ G.token=null; gUI('Sesiunea Google a expirat — apasă „Conectează" din nou.',false); throw new Error('token expirat'); }
+    if(r.status===401){ G.token=null; G.exp=0; localStorage.removeItem('aparm_gtok'); gUI('Sesiunea Google a expirat — apasă din nou pe acțiune (reconectarea e automată).',false); throw new Error('token expirat'); }
     if(!r.ok) return r.text().then(function(t){ throw new Error('Drive '+r.status+': '+t.slice(0,120)); });
     return r;
   });
+}
+function gQEsc(x){ return String(x).replace(/\\/g,'').replace(/'/g,"\\'"); }
+function gListDrive(q){ // cauta in Drive-ul vizibil (doar fisierele create de aplicatie)
+  var url='https://www.googleapis.com/drive/v3/files?pageSize=1000'
+    +'&fields=files(id,name,modifiedTime,size,appProperties,mimeType)'
+    +'&q='+encodeURIComponent(q+' and trashed=false');
+  return gFetch(url).then(function(r){return r.json();}).then(function(j){return j.files||[];});
+}
+function gFolder(nume,parent){ // gaseste-sau-creeaza folder; cache pe sesiune
+  var key=parent+'/'+nume;
+  if(G.fcache[key]) return Promise.resolve(G.fcache[key]);
+  var q="name='"+gQEsc(nume)+"' and mimeType='application/vnd.google-apps.folder' and '"+parent+"' in parents";
+  return gListDrive(q).then(function(f){
+    if(f.length){ G.fcache[key]=f[0].id; return f[0].id; }
+    return gFetch('https://www.googleapis.com/drive/v3/files?fields=id',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({name:nume,mimeType:'application/vnd.google-apps.folder',parents:[parent]})
+    }).then(function(r){return r.json();}).then(function(j){ G.fcache[key]=j.id; return j.id; });
+  });
+}
+function gCatFolder(cat){ // APARM Santiere / <nume santier> / <categorie>
+  var nume=(projList().find(function(p){return p.id===activeId();})||{}).nume||'Santier';
+  return gFolder('APARM Șantiere','root')
+    .then(function(rid){ return gFolder(nume,rid); })
+    .then(function(pfid){ return gFolder(cat||'Altele',pfid); });
 }
 function gList(q){
   var url='https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&pageSize=1000'
@@ -1584,7 +1640,7 @@ function gDownload(id){
 }
 /* ---- push: datele proiectului (JSON) + fisierele noi din arhiva ---- */
 function gPushNow(){
-  if(!G.token){ alert('Conectează întâi Google Drive.'); return; }
+  if(!gTokenValid()){ gEnsureToken(gPushNow); return; }
   if(G.busy) return;
   G.busy=true; gUI('Se sincronizează…');
   flushSave();
@@ -1608,8 +1664,9 @@ function gPushNow(){
         if(r.ckId!=null) props.ckId=String(r.ckId);
         if(r.refk){ props.refk=String(r.refk); props.refv=String(r.refv); }
         if(r.note) props.note=String(r.note).slice(0,100);
-        return gCreate({name:r.name,parents:['appDataFolder'],appProperties:props},r.data)
-          .then(function(j){ r.gid=j.id; return dbPut(r).then(function(){return n+1;}); });
+        return gCatFolder(r.cat).then(function(fid){
+          return gCreate({name:r.name,parents:[fid],appProperties:props},r.data);
+        }).then(function(j){ r.gid=j.id; return dbPut(r).then(function(){return n+1;}); });
       });
     });
     return chain;
@@ -1622,7 +1679,7 @@ function gPushNow(){
 }
 /* ---- pull: lista proiectelor din Drive + preluare ---- */
 function gPullList(){
-  if(!G.token){ alert('Conectează întâi Google Drive.'); return; }
+  if(!gTokenValid()){ gEnsureToken(gPullList); return; }
   gUI('Se caută șantierele din Drive…');
   gList("appProperties has { key='kind' and value='proj' }").then(function(f){
     var box=document.getElementById('gPullBox');
@@ -1654,7 +1711,13 @@ function gPullProject(file,pid,nume){
     localStorage.setItem(AKEY,pid);
     S=load();
     // fisierele din arhiva: descarca ce lipseste local
-    return gList("appProperties has { key='pid' and value='"+pid+"' } and appProperties has { key='kind' and value='file' }")
+    var qf="appProperties has { key='pid' and value='"+pid+"' } and appProperties has { key='kind' and value='file' }";
+    return Promise.all([gListDrive(qf).catch(function(){return [];}), gList(qf).catch(function(){return [];})])
+      .then(function(two){
+        var vaz={}, files=[];
+        two[0].concat(two[1]).forEach(function(f){ if(!vaz[f.id]){vaz[f.id]=1; files.push(f);} });
+        return files;
+      })
       .then(function(files){ return dbAllRaw().catch(function(){return [];}).then(function(local){
         var au={}; local.forEach(function(r){ if(r.gid) au[r.gid]=1; });
         var lipsa=files.filter(function(fl){return !au[fl.id];});
@@ -1677,9 +1740,38 @@ function gPullProject(file,pid,nume){
     gUI('✔ Preluat „'+nume+'" din Drive'+(nf?(' + '+nf+' fișiere în arhivă'):'')+'.',true);
   }).catch(function(e){ gUI('Eroare la preluare: '+e.message,false); });
 }
+/* ---- backup complet .zip direct in folderul santierului din Drive ---- */
+function gBackupDrive(){
+  if(!gTokenValid()){ gEnsureToken(gBackupDrive); return; }
+  gUI('Se pregătește backup-ul…');
+  flushSave();
+  dbAll().catch(function(){return [];}).then(function(rows){
+    var recs=[], k=0;
+    var finish=function(){
+      var zip=packFullBackup(S,recs);
+      var blob=new Blob([zip],{type:'application/zip'});
+      var nume='APARM_complet_'+(S.proiect.denumire||'santier').replace(/\W+/g,'_')+'_'+today()+'.zip';
+      gCatFolder('_Backup').then(function(fid){
+        return gCreate({name:nume,parents:[fid],appProperties:{kind:'backup',pid:activeId()}},blob);
+      }).then(function(){ gUI('✔ Backup complet salvat în Drive: APARM Șantiere / … / _Backup / '+nume,true); })
+      .catch(function(e){ gUI('Eroare la backup: '+e.message,false); });
+    };
+    if(!rows.length) return finish();
+    rows.forEach(function(r){
+      var fr=new FileReader();
+      fr.onload=function(){
+        recs.push({id:r.id,name:r.name,cat:r.cat,note:r.note,type:r.type,date:r.date,bytes:new Uint8Array(fr.result),ckId:(r.ckId!=null?r.ckId:null),refk:r.refk||null,refv:(r.refv!=null?r.refv:null)});
+        if(++k===rows.length) finish();
+      };
+      fr.readAsArrayBuffer(r.data);
+    });
+  });
+}
+
 /* ---- auto-sync: dupa fiecare salvare, cu pauza de 20s ---- */
 function gAutoTick(){
-  if(!G.auto||!G.token||G.busy) return;
+  if(!G.auto||G.busy) return;
+  if(!gTokenValid()&&localStorage.getItem('aparm_gconsent')!=='1') return;
   clearTimeout(G.timer);
   G.timer=setTimeout(gPushNow,20000);
 }
@@ -1758,7 +1850,7 @@ function genOferta(){
     +'• Jurnalul deciziilor și comunicărilor cu executanții și proiectantul;\n'
     +'• RAPORT LUNAR DE PROGRES către beneficiar (stadiu fizic, grafic, situație financiară, plăți următoare).\n'
     +'Se facturează lunar, în rate egale, pe durata execuției.</div></div>';
-  h+='<div class="p-title" style="font-size:10.5pt">3. PREȚ DIRIGENȚIE ('+esc(S.oc.procent)+'% din valoarea investiției'+(v?(' de '+fLei(v)):'')+') ȘI EȘALONAREA PLĂȚILOR</div>'
+  h+='<div class="p-title" style="font-size:10.5pt">3. PREȚ DIRIGENȚIE ('+esc(S.oc.procent)+'% din valoarea C+M, fără TVA'+(v?(' — provizoriu '+fLei(v)):'')+') ȘI EȘALONAREA PLĂȚILOR</div>'
     +'<table class="p-id"><tr><td class="l">Etapa de plată</td><td class="l" style="width:14%">Procent</td><td class="l" style="width:22%">Valoare (fără TVA)</td></tr>'
     +TRANSE.map(function(t){return '<tr><td>'+t[0]+'</td><td>'+t[1]+' %</td><td>'+(v?fLei(on*t[1]/100):'—')+'</td></tr>';}).join('')
     +'<tr><td><b>TOTAL DIRIGENȚIE</b></td><td><b>100 %</b></td><td><b>'+(v?fLei(on):'—')+'</b></td></tr></table>';
@@ -1767,6 +1859,7 @@ function genOferta(){
     +'• La oprirea șantierului peste 60 de zile contractul se suspendă fără costuri;\n'
     +'• Deplasări incluse pe raza de '+esc(S.oc.km)+' km; peste: '+esc(S.oc.leiKm)+' lei/km. Vizită suplimentară la cerere: '+esc(S.oc.vizitaExtra)+' lei;\n'
     +'• Prestatorul răspunde pentru atribuțiile legale ale dirigintelui (L10/1995, Ord. 1496/2011); nu răspunde pentru vicii de proiectare sau execuție neremediată după dispoziție scrisă;\n'
+    +'• Valoarea C+M din devizul de autorizare are caracter PROVIZORIU; onorariul se regularizează la valoarea C+M finală, fără TVA, aferentă exclusiv lucrărilor din domeniul de autorizare al dirigintelui (construcții civile);\n'
     +'• Se emite factură pentru fiecare tranșă.'
     +(S.oc.mentiuni?'\n• Mențiuni: '+S.oc.mentiuni:'')+'</div></div>';
   h+='<table class="p-sign"><tr><th colspan="3">SEMNATARI</th></tr>'
@@ -1789,7 +1882,8 @@ function genContract(){
     '(1) Prestatorul asigură serviciile de dirigenție de șantier'+(S.oc.pmInclus?' ȘI management de proiect':'')+' pentru obiectivul: '+esc(P.denumire||'..........')+', '+esc(P.adresa||'')+', AC nr. '+esc(P.ac||'..........')+'.\n'
     +'(2) SERVICIILE ȘI PREȚUL SUNT CELE PREVĂZUTE ÎN '+ref.toUpperCase()+', acceptată de Beneficiar, care constituie ANEXA 1 — parte integrantă din contract: onorariu dirigenție '+esc(S.oc.procent)+'% din valoarea investiției'+(v?(' ('+fLei(on)+')'):'')+', plătibil în tranșele din ofertă'
     +(S.oc.pmInclus?('; management de proiect '+esc(S.oc.procentPM)+'% din valoarea investiției'+(v?(' ('+fLei(pmv)+')'):'')+', facturat lunar în rate egale'):'')+'.\n'
-    +'(3) La modificarea valorii investiției prin acte adiționale la contractul de execuție, onorariul se regularizează proporțional.');
+    +'(3) Valoarea C+M din devizul aferent documentației de autorizare are caracter PROVIZORIU. Regularizarea onorariului se face la valoarea C+M FINALĂ, fără TVA, aferentă exclusiv lucrărilor aflate în aria de supraveghere a Prestatorului și încadrate în domeniul/subdomeniul său de autorizare (construcții civile; instalațiile NU intră în baza de calcul și nu fac obiectul verificărilor Prestatorului), pe baza: devizului actualizat, devizului post-execuție, centralizatoarelor de lucrări, raportului de evaluare/expertiză valorică sau valorii finale declarate către autorități, după caz.\n'
+    +'(4) Dacă Beneficiarul nu pune la dispoziție documentele de valoare, onorariul se calculează provizoriu la cea mai mare valoare estimabilă documentat (valoare autorizată actualizată, contracte comunicate, deviz întocmit de specialist), cu regularizare ulterioară. Pentru lucrări în regie proprie, valoarea C+M se stabilește prin deviz post-execuție sau evaluare pe metoda costului (cantități reale × prețuri unitare de referință).');
   h+=art('3','Durata',
     'De la semnare până la recepția la terminarea lucrărilor și predarea cărții tehnice, dar nu mai mult de '+esc(S.oc.luni)+' luni de la ordinul de începere; peste acest termen, din motive neimputabile Prestatorului: abonament '+esc(S.oc.abonament)+' lei/lună, fără act adițional.');
   h+=art('4','Plata',
@@ -1798,7 +1892,7 @@ function genContract(){
     +'(3) Prestatorul are DREPT DE RETENȚIE asupra cărții tehnice până la plata integrală.\n'
     +'(4) Deplasări: incluse '+esc(S.oc.km)+' km; peste — '+esc(S.oc.leiKm)+' lei/km. Vizite suplimentare: '+esc(S.oc.vizitaExtra)+' lei/vizită.');
   h+=art('5','Obligațiile Beneficiarului',
-    'a) predă proiectul tehnic complet, verificat de verificatori atestați, AC și contractul de execuție; b) contractează executant cu RTE atestat — alegerea executantului aparține exclusiv Beneficiarului; c) asigură convocarea Prestatorului cu minimum 3 zile lucrătoare înainte de fazele determinante, betonări și acoperirea lucrărilor; d) asigură accesul pe șantier; e) nu dispune executantului continuarea lucrărilor contrar dispozițiilor de șantier.');
+    'a) predă proiectul tehnic complet, verificat de verificatori atestați, AC și contractul de execuție; b) contractează executant cu RTE atestat — alegerea executantului aparține exclusiv Beneficiarului; c) asigură convocarea Prestatorului cu minimum 3 zile lucrătoare înainte de fazele determinante, betonări și acoperirea lucrărilor; d) asigură accesul pe șantier; e) nu dispune executantului continuarea lucrărilor contrar dispozițiilor de șantier; f) transmite Prestatorului, la fiecare creștere a valorii lucrărilor peste 10% și obligatoriu cu minimum 10 zile lucrătoare înainte de convocarea recepției, documentele necesare stabilirii valorii C+M actualizate (deviz actualizat, centralizator, valoarea lucrărilor suplimentare); g) asigură diriginți autorizați pentru specialitățile de instalații, care nu fac obiectul prezentului contract.');
   h+=art('6','Răspunderea. Limitări',
     '(1) Prestatorul răspunde exclusiv pentru atribuțiile legale ale dirigintelui (L10/1995, Ord. 1496/2011)'+(S.oc.pmInclus?' și pentru serviciile de management din Anexa 1 (obligație de diligență, nu de rezultat)':'')+'.\n'
     +'(2) NU răspunde pentru: viciile proiectului (răspunde proiectantul/verificatorul); calitatea execuției (răspund executantul și RTE), inclusiv lucrările neremediate după dispoziția scrisă a Prestatorului; lucrările executate sau acoperite ÎN LIPSA convocării de la Art. 5 c) — acestea se consideră neverificate și pot fi decopertate pe cheltuiala Beneficiarului/executantului; consecințele suspendării pentru neplată.\n'

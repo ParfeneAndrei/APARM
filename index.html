@@ -7,6 +7,7 @@
 <meta name="theme-color" content="#191b1f">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
 :root{
   --ink:#191b1f; --ink2:#3a3d44; --paper:#f6f5f1; --card:#ffffff;
@@ -385,7 +386,25 @@ table.reg{width:100%;border-collapse:collapse;font-size:12.5px;background:#fff}
 <!-- ============ SETARI ============ -->
 <section class="view" id="v-set">
   <h2 class="pg"><small>Date & siguranță</small>Setări</h2>
-  <div class="card"><h3>Sincronizare prin Google Drive (recomandat)</h3>
+  <div class="card"><h3>☁️ Sincronizare AUTOMATĂ cu Google Drive</h3>
+    <div class="grid" style="grid-template-columns:1fr">
+      <div class="f"><label>Client ID Google (se configurează o singură dată — vezi ghidul)</label>
+      <input id="gCid" placeholder="ex: 1234567890-abc123.apps.googleusercontent.com"></div>
+    </div>
+    <div class="qk" style="margin-top:8px">
+      <button class="btn gold" style="border:0" id="gBtnConn" onclick="gConnect()">🔑 Conectează Google Drive</button>
+      <button onclick="gPushNow()">⬆ Salvează acum în Drive</button>
+      <button onclick="gPullList()">⬇ Preia din Drive…</button>
+    </div>
+    <div style="margin-top:8px;font-size:12.5px">
+      <label style="display:flex;gap:8px;align-items:center;font-weight:600">
+        <input type="checkbox" id="gAuto" style="width:18px;height:18px"> Sincronizare automată (salvează în Drive după fiecare modificare)
+      </label>
+    </div>
+    <p id="gStatus" style="font-size:12px;color:var(--ink2);margin-top:8px">Neconectat. Datele se salvează în spațiul ascuns al aplicației din contul tău Google (nu apar printre fișierele din Drive și nu ocupă vizibil spațiu).</p>
+    <div id="gPullBox" style="display:none;margin-top:8px"></div>
+  </div>
+  <div class="card"><h3>Sincronizare prin Google Drive (manual, cu fișier .zip)</h3>
     <p style="font-size:13px;margin-bottom:10px"><b>Backup-ul complet</b> pune într-un singur fișier .zip toate datele șantierului activ <b>plus toată arhiva de scanări</b>. Salvează-l în Google Drive; pe alt dispozitiv, descarcă-l din Drive și restaurează-l — apare ca șantier nou, identic.</p>
     <div class="qk">
       <button class="btn gold" style="border:0" onclick="fullBackup()">⬇️ Backup complet (.zip) — pentru Drive</button>
@@ -615,7 +634,7 @@ function save(){
     localStorage.setItem('aparm_p_'+activeId(),JSON.stringify(S));
     var el=document.getElementById('saved'); el.classList.add('on');
     setTimeout(function(){el.classList.remove('on');},1200);
-    refreshKPI();
+    refreshKPI(); gAutoTick();
   },250);
 }
 /* ---- gestiune santiere ---- */
@@ -1498,6 +1517,173 @@ function arhZip(){
   });
 }
 
+/* ================= SINCRONIZARE GOOGLE DRIVE ================= */
+var G={token:null,cid:localStorage.getItem('aparm_gcid')||'',auto:localStorage.getItem('aparm_gauto')==='1',timer:null,busy:false};
+function gUI(msg,ok){
+  var el=document.getElementById('gStatus'); if(!el) return;
+  el.innerHTML=msg; el.style.color=ok===false?'var(--bad)':(ok?'var(--ok)':'var(--ink2)');
+}
+function gInitUI(){
+  var c=document.getElementById('gCid');
+  if(c){ c.value=G.cid; c.oninput=function(){ G.cid=c.value.trim(); localStorage.setItem('aparm_gcid',G.cid); }; }
+  var a=document.getElementById('gAuto');
+  if(a){ a.checked=G.auto; a.onchange=function(){ G.auto=a.checked; localStorage.setItem('aparm_gauto',G.auto?'1':'0'); }; }
+  if(G.token) gUI('✔ Conectat la Google Drive.',true);
+}
+function gReady(){ return typeof google!=='undefined'&&google.accounts&&google.accounts.oauth2; }
+function gConnect(){
+  if(location.protocol!=='https:'&&location.hostname!=='localhost'){ alert('Sincronizarea funcționează doar în varianta instalată/găzduită (adresa https), nu în fișierul local.'); return; }
+  if(!G.cid){ alert('Completează întâi Client ID-ul Google (vezi ghidul de configurare).'); return; }
+  if(!gReady()){ alert('Serviciul Google nu s-a încărcat încă — verifică internetul și reîncearcă.'); return; }
+  try{
+    var tc=google.accounts.oauth2.initTokenClient({
+      client_id:G.cid,
+      scope:'https://www.googleapis.com/auth/drive.appdata',
+      callback:function(resp){
+        if(resp&&resp.access_token){ G.token=resp.access_token; gUI('✔ Conectat. Sesiunea e valabilă ~1 oră; reconectezi cu un click când expiră.',true); }
+        else gUI('Conectare anulată.',false);
+      }
+    });
+    tc.requestAccessToken({prompt:G.token?'':'consent'});
+  }catch(e){ gUI('Eroare la conectare: '+e.message,false); }
+}
+function gFetch(url,opt){
+  opt=opt||{}; opt.headers=opt.headers||{};
+  opt.headers['Authorization']='Bearer '+G.token;
+  return fetch(url,opt).then(function(r){
+    if(r.status===401){ G.token=null; gUI('Sesiunea Google a expirat — apasă „Conectează" din nou.',false); throw new Error('token expirat'); }
+    if(!r.ok) return r.text().then(function(t){ throw new Error('Drive '+r.status+': '+t.slice(0,120)); });
+    return r;
+  });
+}
+function gList(q){
+  var url='https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&pageSize=1000'
+    +'&fields=files(id,name,modifiedTime,size,appProperties)'+(q?('&q='+encodeURIComponent(q)):'');
+  return gFetch(url).then(function(r){return r.json();}).then(function(j){return j.files||[];});
+}
+function gMultipart(meta,blob){
+  var b='aparm'+Date.now();
+  return {
+    body:new Blob(['--'+b+'\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n',
+      JSON.stringify(meta),'\r\n--'+b+'\r\nContent-Type: '+(blob.type||'application/octet-stream')+'\r\n\r\n',
+      blob,'\r\n--'+b+'--']),
+    type:'multipart/related; boundary='+b
+  };
+}
+function gCreate(meta,blob){
+  var m=gMultipart(meta,blob);
+  return gFetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',
+    {method:'POST',headers:{'Content-Type':m.type},body:m.body}).then(function(r){return r.json();});
+}
+function gUpdate(id,blob){
+  return gFetch('https://www.googleapis.com/upload/drive/v3/files/'+id+'?uploadType=media',
+    {method:'PATCH',headers:{'Content-Type':blob.type||'application/octet-stream'},body:blob});
+}
+function gDownload(id){
+  return gFetch('https://www.googleapis.com/drive/v3/files/'+id+'?alt=media').then(function(r){return r.blob();});
+}
+/* ---- push: datele proiectului (JSON) + fisierele noi din arhiva ---- */
+function gPushNow(){
+  if(!G.token){ alert('Conectează întâi Google Drive.'); return; }
+  if(G.busy) return;
+  G.busy=true; gUI('Se sincronizează…');
+  flushSave();
+  var pid=activeId();
+  var nume=(projList().find(function(p){return p.id===pid;})||{}).nume||'Santier';
+  S.syncAt=new Date().toISOString();
+  var dataBlob=new Blob([JSON.stringify(S)],{type:'application/json'});
+  gList("appProperties has { key='pid' and value='"+pid+"' } and appProperties has { key='kind' and value='proj' }")
+  .then(function(f){
+    if(f.length) return gUpdate(f[0].id,dataBlob);
+    return gCreate({name:'proj_'+pid+'.json',parents:['appDataFolder'],
+      appProperties:{kind:'proj',pid:pid,nume:String(nume).slice(0,100)}},dataBlob);
+  })
+  .then(function(){ return dbAll().catch(function(){return [];}); })
+  .then(function(rows){
+    var noi=rows.filter(function(r){return !r.gid;});
+    var chain=Promise.resolve(0);
+    noi.forEach(function(r){
+      chain=chain.then(function(n){
+        var props={kind:'file',pid:pid,cat:String(r.cat||'').slice(0,100),date:r.date||''};
+        if(r.ckId!=null) props.ckId=String(r.ckId);
+        if(r.refk){ props.refk=String(r.refk); props.refv=String(r.refv); }
+        if(r.note) props.note=String(r.note).slice(0,100);
+        return gCreate({name:r.name,parents:['appDataFolder'],appProperties:props},r.data)
+          .then(function(j){ r.gid=j.id; return dbPut(r).then(function(){return n+1;}); });
+      });
+    });
+    return chain;
+  })
+  .then(function(nf){
+    G.busy=false; localStorage.setItem('aparm_gsync_'+pid,new Date().toISOString());
+    gUI('✔ Sincronizat în Drive ('+fmtDate(today())+', '+new Date().toTimeString().slice(0,5)+')'+(nf?(' — '+nf+' fișiere noi urcate'):'')+'.',true);
+  })
+  .catch(function(e){ G.busy=false; gUI('Eroare la sincronizare: '+e.message,false); });
+}
+/* ---- pull: lista proiectelor din Drive + preluare ---- */
+function gPullList(){
+  if(!G.token){ alert('Conectează întâi Google Drive.'); return; }
+  gUI('Se caută șantierele din Drive…');
+  gList("appProperties has { key='kind' and value='proj' }").then(function(f){
+    var box=document.getElementById('gPullBox');
+    box.style.display='block';
+    if(!f.length){ box.innerHTML='<p style="font-size:12.5px;color:#888">Niciun șantier salvat încă în Drive. Apasă întâi „Salvează acum" de pe dispozitivul cu date.</p>'; gUI('Gata.'); return; }
+    box.innerHTML='<b style="font-size:13px">Șantiere în Drive — alege ce preiei pe acest dispozitiv:</b>';
+    f.sort(function(a,b){return (b.modifiedTime||'').localeCompare(a.modifiedTime||'');});
+    f.forEach(function(file){
+      var it=document.createElement('div'); it.className='arh-it'; it.style.marginTop='6px';
+      var pid=(file.appProperties||{}).pid||'', nume=(file.appProperties||{}).nume||file.name;
+      it.innerHTML='<div class="ic">🏗️</div><div class="m"><b>'+esc(nume)+'</b><span>actualizat: '+esc((file.modifiedTime||'').slice(0,16).replace('T',' '))+'</span></div><div class="a"></div>';
+      var b=document.createElement('button'); b.textContent='Preia';
+      b.onclick=function(){ gPullProject(file,pid,nume); };
+      it.querySelector('.a').appendChild(b);
+      box.appendChild(it);
+    });
+    gUI('Gata — alege din listă.');
+  }).catch(function(e){ gUI('Eroare: '+e.message,false); });
+}
+function gPullProject(file,pid,nume){
+  var existaLocal=projList().some(function(p){return p.id===pid;});
+  if(existaLocal&&!confirm('Șantierul „'+nume+'" există și pe acest dispozitiv.\nPreiau versiunea din Drive PESTE cea locală? (varianta locală se pierde)')) return;
+  gUI('Se preia „'+nume+'"…');
+  gDownload(file.id).then(function(blob){ return blob.text(); }).then(function(txt){
+    var data=JSON.parse(txt);
+    flushSave();
+    if(!existaLocal){ var l=projList(); l.push({id:pid,nume:nume}); projSaveList(l); }
+    localStorage.setItem('aparm_p_'+pid,JSON.stringify(data));
+    localStorage.setItem(AKEY,pid);
+    S=load();
+    // fisierele din arhiva: descarca ce lipseste local
+    return gList("appProperties has { key='pid' and value='"+pid+"' } and appProperties has { key='kind' and value='file' }")
+      .then(function(files){ return dbAllRaw().catch(function(){return [];}).then(function(local){
+        var au={}; local.forEach(function(r){ if(r.gid) au[r.gid]=1; });
+        var lipsa=files.filter(function(fl){return !au[fl.id];});
+        var chain=Promise.resolve(0);
+        lipsa.forEach(function(fl){
+          chain=chain.then(function(n){
+            return gDownload(fl.id).then(function(blob){
+              var p=fl.appProperties||{};
+              var rec={pid:pid,gid:fl.id,name:fl.name,cat:p.cat||'Altele',note:p.note||'',type:blob.type||'application/octet-stream',size:blob.size,data:blob,date:p.date||today()};
+              if(p.ckId!=null&&p.ckId!=='') rec.ckId=parseInt(p.ckId,10);
+              if(p.refk){ rec.refk=p.refk; rec.refv=p.refv; }
+              return dbAdd(rec).then(function(){return n+1;});
+            });
+          });
+        });
+        return chain;
+      });});
+  }).then(function(nf){
+    init(); document.getElementById('gPullBox').style.display='none';
+    gUI('✔ Preluat „'+nume+'" din Drive'+(nf?(' + '+nf+' fișiere în arhivă'):'')+'.',true);
+  }).catch(function(e){ gUI('Eroare la preluare: '+e.message,false); });
+}
+/* ---- auto-sync: dupa fiecare salvare, cu pauza de 20s ---- */
+function gAutoTick(){
+  if(!G.auto||!G.token||G.busy) return;
+  clearTimeout(G.timer);
+  G.timer=setTimeout(gPushNow,20000);
+}
+
 /* ================= OFERTA & CONTRACT ================= */
 var OC_FIELDS=[['nrOferta','Nr. ofertă','OF-001'],['dataOferta','Data ofertei (ZZ.LL.AAAA)',''],
  ['procent','Onorariu dirigenție (% din investiție)','2'],['procentPM','Opțiune management (% din investiție)','1.5'],
@@ -2223,7 +2409,7 @@ function init(){
   document.getElementById('logoTop').src=LOGO;
   buildProjSel(); buildProj(); refreshTitle(); buildFazeNav(); buildChecklist(); buildDocPick(); buildRegs(); refreshKPI(); ctStat(); storMeter();
   buildArhCat(); buildContacts();
-  migratePids(); arhRender(); arhBadge(); refreshCkFiles(buildChecklist); buildObiectii(); refreshAtt(function(){ buildPM(); buildRegs(); }); buildPM(); buildOC(); buildTermene(); updateCote();
+  migratePids(); arhRender(); arhBadge(); refreshCkFiles(buildChecklist); buildObiectii(); refreshAtt(function(){ buildPM(); buildRegs(); }); buildPM(); buildOC(); gInitUI(); buildTermene(); updateCote();
   document.getElementById('flux').innerHTML=
    '1. Completează <b>Proiect</b> o singură dată → datele intră automat în toate documentele.<br>'
   +'2. Parcurge <b>Checklist</b> pe faze — vezi baza legală și capitolul cărții tehnice pentru fiecare act.<br>'

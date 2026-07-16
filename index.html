@@ -191,6 +191,7 @@ table.reg{width:100%;border-collapse:collapse;font-size:12.5px;background:#fff}
   <button data-v="reg">Registre <span class="n" id="nNeconf" style="display:none">0</span></button>
   <button data-v="pm">Mgmt.</button>
   <button data-v="oc">Contract</button>
+  <button data-v="birou">Birou</button>
   <button data-v="ct">Carte teh.</button>
   <button data-v="arh">Arhivă <span class="n" id="nArh" style="display:none">0</span></button>
   <button data-v="set">Setări</button>
@@ -339,7 +340,69 @@ table.reg{width:100%;border-collapse:collapse;font-size:12.5px;background:#fff}
     <div class="qk">
       <button class="btn gold" style="border:0" onclick="genRaportPM()">🖨 Raport de progres (PDF)</button>
       <button class="btn dark" onclick="genPredare()">🖨 Dosar de predare (PDF)</button>
+      <button class="btn ghost" onclick="genRaportBenef()">🌐 Raport pentru beneficiar (pagină web)</button>
     </div>
+    <p style="font-size:11.5px;color:var(--ink2);margin-top:8px">Raportul web e un fișier .html simplu, cu stadiul șantierului, graficul și ultimele vizite cu poze — îl trimiți beneficiarului pe WhatsApp/e-mail sau îl urci în Drive.</p>
+  </div>
+</section>
+
+<!-- ============ BIROU (instrumente globale diriginte) ============ -->
+<section class="view" id="v-birou">
+  <h2 class="pg"><small>Instrumentele tale, peste toate șantierele</small>Biroul dirigintelui</h2>
+
+  <div class="card"><h3>📒 Registrul de evidență a activității (Anexa 5 — viza anuală I.S.C.)</h3>
+    <p style="font-size:11.5px;color:var(--ink2);margin-bottom:8px">Se completează automat din TOATE șantierele tale, pe anul ales. Îl tipărești în formatul oficial și îl prezinți la I.J.C. pentru viză.</p>
+    <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(180px,1fr))">
+      <div class="f"><label>Titular (nume și prenume)</label><input id="bNume"></div>
+      <div class="f"><label>Autorizație diriginte nr./data</label><input id="bAut"></div>
+      <div class="f"><label>Anul registrului</label><select id="bAn"></select></div>
+      <div class="f"><label>Registru vizat I.S.C. la data</label><input id="bVizat" placeholder="ZZ.LL.AAAA"></div>
+    </div>
+    <div id="bRegPrev" style="margin-top:8px;font-size:12.5px"></div>
+    <button class="btn gold" style="margin-top:8px" onclick="genRegistruISC()">🖨 Generează registrul pe anul ales (PDF)</button>
+  </div>
+
+  <div class="card"><h3>🛡️ Asigurarea profesională (RC diriginte)</h3>
+    <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(180px,1fr))">
+      <div class="f"><label>Asigurător</label><input id="bAsigF" placeholder="ex: Groupama"></div>
+      <div class="f"><label>Poliță nr.</label><input id="bAsigP"></div>
+      <div class="f"><label>Sumă asigurată (lei)</label><input id="bAsigS"></div>
+      <div class="f"><label>Valabilă până la</label><input id="bAsigE" placeholder="ZZ.LL.AAAA"></div>
+    </div>
+    <p style="font-size:11.5px;color:var(--ink2);margin-top:6px">Expirarea intră automat în alertele de pe Acasă (avertizare din timp, pe orice șantier ai fi).</p>
+  </div>
+
+  <div class="card"><h3>📚 Legislație pentru diriginți</h3>
+    <div id="bLegi" style="font-size:13px;line-height:1.9"></div>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <input class="search" id="bLegiQ" style="margin:0" placeholder="Caută în legislația oficială… (ex: recepție lucrări, faze determinante)">
+      <button class="btn dark" onclick="bLegiSearch()">Caută</button>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap">
+      <button class="foto-btn" onclick="document.getElementById('bLegiFile').click()">＋ Încarcă legislație nouă (PDF)</button>
+      <input type="file" id="bLegiFile" accept="application/pdf" multiple style="display:none" onchange="bLegiUpload(this)">
+      <span style="font-size:11.5px;color:var(--ink2)">Biblioteca ta personală — vizibilă din orice șantier.</span>
+    </div>
+    <div id="bLegiList" style="margin-top:8px"></div>
+  </div>
+
+  <div class="card"><h3>🧮 Calculator taxe & cote I.S.C. (L50/1991 + L10/1995)</h3>
+    <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(200px,1fr))">
+      <div class="f"><label>Valoare autorizată (lei, fără TVA)</label><input id="bTaxAut"></div>
+      <div class="f"><label>Valoare finală (lei, fără TVA)</label><input id="bTaxFin" placeholder="la recepție"></div>
+    </div>
+    <div id="bTaxOut" style="margin-top:10px;font-size:13px;background:#eaf1f8;border:1px solid #BBCEE5;border-radius:7px;padding:10px 12px"></div>
+  </div>
+
+  <div class="card"><h3>🤖 Asistent AI (întrebări de dirigenție, cu contextul șantierului)</h3>
+    <div class="f"><label>Cheie API Anthropic (console.anthropic.com — rămâne doar pe dispozitivul tău)</label>
+      <input id="bAiKey" type="password" placeholder="sk-ant-…"></div>
+    <textarea id="bAiQ" style="width:100%;border:1px solid var(--line);border-radius:7px;padding:9px 11px;background:#fffdf5;min-height:64px;margin-top:8px" placeholder="ex: Ce pași urmez dacă executantul a turnat placa fără să mă convoace?"></textarea>
+    <div class="qk" style="margin-top:8px">
+      <button class="btn gold" style="border:0" onclick="bAiAsk()">Întreabă asistentul</button>
+      <button class="btn ghost" onclick="bAiCopy()">Copiază întrebarea + contextul (pt. claude.ai)</button>
+    </div>
+    <div id="bAiOut" style="margin-top:10px;font-size:13.5px;line-height:1.6;white-space:pre-wrap"></div>
   </div>
 </section>
 
@@ -1518,6 +1581,249 @@ function arhZip(){
   });
 }
 
+/* ================= BIROU (date globale diriginte) ================= */
+var BIROU=(function(){ try{return JSON.parse(localStorage.getItem('aparm_birou')||'{}');}catch(e){return {};} })();
+BIROU.asig=BIROU.asig||{}; 
+function bSave(){ localStorage.setItem('aparm_birou',JSON.stringify(BIROU)); }
+function bBind(id,obj,key,after){
+  var el=document.getElementById(id); if(!el) return;
+  el.value=obj[key]||'';
+  el.oninput=function(){ obj[key]=el.value; bSave(); if(after)after(); };
+}
+/* ---- registrul de evidenta Anexa 5, din toate santierele ---- */
+function bToateSantierele(){
+  return projList().map(function(p){
+    var d=null; try{ d=JSON.parse(localStorage.getItem('aparm_p_'+p.id)||'null'); }catch(e){}
+    return d?{nume:p.nume,P:d.proiect||{}}:null;
+  }).filter(Boolean);
+}
+function bAniDisponibili(){
+  var ani={}, azi=new Date().getFullYear(); ani[azi]=1;
+  bToateSantierele().forEach(function(x){
+    var a=parseData(x.P.dataStart), b=parseData(x.P.dataReceptie)||parseData(x.P.dataFinal);
+    if(a){ var y2=b?b.getFullYear():azi; for(var y=a.getFullYear(); y<=Math.min(y2,azi+1); y++) ani[y]=1; }
+  });
+  return Object.keys(ani).sort();
+}
+function bRanduriAn(an){
+  an=+an;
+  var randuri=[];
+  bToateSantierele().forEach(function(x){
+    var P=x.P;
+    var a=parseData(P.dataStart), b=parseData(P.dataReceptie)||parseData(P.dataFinal);
+    var incepe=a?a.getFullYear():null, sfarseste=b?b.getFullYear():new Date().getFullYear();
+    if(incepe===null||incepe>an||sfarseste<an) return;
+    randuri.push({
+      ob:(P.denumire||x.nume||'')+(P.adresa?(', '+P.adresa):'')+(P.localitate?(', '+P.localitate):''),
+      ac:(P.ac||'')+(P.emitent?(' — '+P.emitent):''),
+      inv:(P.beneficiar||'')+(P.telB?(', tel. '+P.telB):''),
+      cat:P.categorie||'D',
+      dom:'Construcții civile'+(P.categorie?(' — cat. '+P.categorie):''),
+      per:(P.dataStart?fmtDate(P.dataStart):'.....')+' — '+(P.dataReceptie?fmtDate(P.dataReceptie):(P.dataFinal?('estimat '+fmtDate(P.dataFinal)):'în derulare')),
+      obs:''
+    });
+  });
+  return randuri;
+}
+function bRegPreview(){
+  var sel=document.getElementById('bAn'); if(!sel) return;
+  var n=bRanduriAn(sel.value).length;
+  document.getElementById('bRegPrev').innerHTML='Pe anul <b>'+sel.value+'</b>: <b>'+n+'</b> obiective vor intra în registru.'+(n?'':' Completează în Proiect datele șantierelor (denumire, AC, beneficiar, dată începere).');
+}
+function genRegistruISC(){
+  var an=document.getElementById('bAn').value;
+  var r=bRanduriAn(an);
+  var h='<div class="p-head"><img src="'+LOGO+'"><div class="n"><b>'+esc(BIROU.nume||'ing. Parfene Andrei')+' — diriginte de șantier autorizat</b>'
+    +'<div>Autorizația nr. '+esc(BIROU.aut||'..........')+' • APARM PROIECT SRL • Hărman, jud. Brașov • +40 768 401 579</div></div></div>'
+    +'<div class="p-title">REGISTRU DE EVIDENȚĂ A ACTIVITĂȚII DE DIRIGINTE DE ȘANTIER — ANUL '+esc(an)+'</div>'
+    +'<div class="p-legal">Anexa nr. 5 la Procedura de autorizare a diriginților de șantier (Ordinul I.S.C. nr. 1496/2011). Se prezintă anual la Inspectoratul Regional/Județean în Construcții pentru viză.</div>'
+    +'<table class="p-id" style="font-size:8pt"><tr>'
+    +'<td class="l" style="width:4%">Nr.</td><td class="l" style="width:24%">Obiectivul de investiții și amplasamentul</td>'
+    +'<td class="l" style="width:15%">Autorizația de construire nr. / emitent</td><td class="l" style="width:16%">Investitorul</td>'
+    +'<td class="l" style="width:6%">Cat. imp.</td><td class="l" style="width:13%">Domeniul autorizat</td>'
+    +'<td class="l" style="width:14%">Perioada activității</td><td class="l">Obs.</td></tr>'
+    +(r.length?r.map(function(x,i){return '<tr><td>'+(i+1)+'</td><td>'+esc(x.ob)+'</td><td>'+esc(x.ac)+'</td><td>'+esc(x.inv)+'</td><td>'+esc(x.cat)+'</td><td>'+esc(x.dom)+'</td><td>'+esc(x.per)+'</td><td>'+esc(x.obs)+'</td></tr>';}).join('')
+      :'<tr><td colspan="8">Nu am desfășurat activitate de dirigenție de șantier în anul '+esc(an)+'.</td></tr>')
+    +'</table>'
+    +'<div class="p-nota">Registru generat la '+fmtDate(today())+'.'+(BIROU.vizat?(' Ultima viză I.S.C.: '+esc(BIROU.vizat)+'.'):'')+'</div>'
+    +'<table class="p-sign"><tr><th colspan="3">SEMNATARI</th></tr>'
+    +'<tr><td class="rl">Diriginte de șantier (semnătura și ștampila)</td><td>'+esc(BIROU.nume||'ing. Parfene Andrei')+'</td><td></td></tr>'
+    +'<tr><td class="rl">Viza I.S.C. (data, semnătura, ștampila)</td><td></td><td></td></tr></table>';
+  document.getElementById('printArea').innerHTML=h;
+  setTimeout(function(){window.print();},80);
+}
+/* ---- legislatie ---- */
+var LEGI=[
+ ['Legea 10/1995 — calitatea în construcții (actualizată)','https://legislatie.just.ro/public/DetaliiDocument/5729'],
+ ['Legea 50/1991 — autorizarea lucrărilor (actualizată)','https://legislatie.just.ro/public/DetaliiDocument/1515'],
+ ['HG 273/1994 — regulamentul de recepție','https://legislatie.just.ro/Public/DetaliiDocument/74084'],
+ ['HG 907/2016 — devizul general (definiția C+M)','https://legislatie.just.ro/Public/DetaliiDocumentAfis/186607'],
+ ['Ordinul ISC 1496/2011 — autorizarea diriginților','https://legislatie.just.ro/public/DetaliiDocument/129692'],
+ ['Site oficial I.S.C. — proceduri și formulare','https://isc.gov.ro']
+];
+function bLegiBuild(){
+  var el=document.getElementById('bLegi'); if(!el) return;
+  el.innerHTML=LEGI.map(function(l){return '• <a href="'+l[1]+'" target="_blank" style="color:var(--navy);font-weight:600">'+l[0]+'</a>';}).join('<br>')
+   +'<br><span style="font-size:11px;color:var(--ink2)">Linkurile duc la forma actualizată la zi de pe portalul oficial legislatie.just.ro.</span>';
+}
+function bLegiSearch(){
+  var q=document.getElementById('bLegiQ').value.trim(); if(!q) return;
+  window.open('https://www.google.com/search?q='+encodeURIComponent(q+' site:legislatie.just.ro'),'_blank');
+}
+function bLegiUpload(inp){
+  var files=Array.prototype.slice.call(inp.files); inp.value='';
+  var k=0;
+  files.forEach(function(f){
+    dbAdd({pid:'__glob',name:f.name,cat:'Legislație',note:'',type:f.type,size:f.size,data:f,date:today()})
+      .then(function(){ if(++k===files.length) bLegiList(); })
+      .catch(function(e){ alert('Eroare: '+e); });
+  });
+}
+function bLegiList(){
+  var el=document.getElementById('bLegiList'); if(!el) return;
+  dbAllRaw().then(function(rows){
+    var f=rows.filter(function(r){return r.pid==='__glob';});
+    el.innerHTML='';
+    f.forEach(function(r){
+      var it=document.createElement('div'); it.className='arh-it'; it.style.marginBottom='5px';
+      it.innerHTML='<div class="ic">📕</div><div class="m"><b>'+esc(r.name)+'</b><span>'+fmtDate(r.date)+' • '+Math.round(r.size/1024)+' KB</span></div><div class="a"></div>';
+      var a=it.querySelector('.a');
+      var bV=document.createElement('button'); bV.textContent='Deschide';
+      bV.onclick=function(){ window.open(URL.createObjectURL(r.data),'_blank'); };
+      var bX=document.createElement('button'); bX.textContent='🗑';
+      bX.onclick=function(){ if(confirm('Șterg?')) dbDel(r.id).then(bLegiList); };
+      a.appendChild(bV); a.appendChild(bX);
+      el.appendChild(it);
+    });
+  }).catch(function(){});
+}
+/* ---- calculator taxe ISC ---- */
+function bTaxCalc(){
+  var out=document.getElementById('bTaxOut'); if(!out) return;
+  var va=pNum(document.getElementById('bTaxAut').value);
+  var vf=pNum(document.getElementById('bTaxFin').value);
+  if(!va){ out.innerHTML='Completează valoarea autorizată (o preiau automat din Proiect dacă e completată acolo).'; return; }
+  function L(x){return Math.round(x).toLocaleString('ro-RO')+' lei';}
+  var c01=va*0.001, c05half=va*0.0025;
+  var h='<b>LA ÎNCEPEREA LUCRĂRILOR</b> (odată cu notificarea către I.S.C.):<br>'
+   +'• Cota 0,1% (L50/1991, art. 43): <b>'+L(c01)+'</b><br>'
+   +'• 50% din cota 0,5% (L10/1995, art. 43): <b>'+L(c05half)+'</b><br>'
+   +'• Total de virat la începere: <b>'+L(c01+c05half)+'</b> (0,35% din valoarea autorizată)';
+  if(vf){
+    var rest=vf*0.005-c05half;
+    var dif01=(vf-va)>0?(vf-va)*0.001:0;
+    h+='<br><br><b>LA RECEPȚIE</b> (regularizare la valoarea finală de '+L(vf)+'):<br>'
+     +'• Rest cotă 0,5% la valoarea finală: <b>'+L(Math.max(0,rest))+'</b>'
+     +(dif01?('<br>• Diferență cotă 0,1% pentru actualizarea valorii: <b>'+L(dif01)+'</b>'):'')
+     +'<br>• Total la recepție: <b>'+L(Math.max(0,rest)+dif01)+'</b>'
+     +'<br><br><b>TOTAL GENERAL COTE I.S.C.: '+L(c01+dif01+vf*0.005)+'</b> (0,6% din valoarea finală)';
+  } else {
+    h+='<br><span style="font-size:11.5px">Completează și valoarea finală ca să calculez regularizarea de la recepție.</span>';
+  }
+  h+='<br><span style="font-size:11px;color:#8a4a12">Întârzierea la virare se penalizează cu 0,15%/zi, fără a depăși suma datorată. Dovezile de plată se anexează la notificări și la dosarul de recepție.</span>';
+  out.innerHTML=h;
+}
+/* ---- asistent AI ---- */
+function bAiCtx(){
+  var P=S.proiect;
+  var T=colectTermene().slice(0,5).map(function(x){return fmtDate(x.d.toISOString().slice(0,10))+': '+x.txt;}).join('; ');
+  var nc=S.neconf.filter(function(r){return r.status==='Deschisă';}).map(function(r){return r.descriere;}).slice(0,3).join('; ');
+  return 'Context: sunt diriginte de șantier autorizat în România (construcții civile, categoria D). Șantier: '
+   +(P.denumire||'-')+', '+(P.localitate||'')+'. Beneficiar: '+(P.beneficiar||'-')+'. Executant: '+(P.executant||'-')
+   +'. AC: '+(P.ac||'-')+'. Stadiu: '+(document.getElementById('kProgres')?document.getElementById('kProgres').textContent:'')+' documente.'
+   +(T?(' Termene apropiate: '+T+'.'):'')+(nc?(' Neconformități deschise: '+nc+'.'):'')
+   +' Răspunde practic și concis, cu trimiteri la legislația română (L10/1995, L50/1991, HG273/1994, Ord. 1496/2011) unde e cazul.';
+}
+function bAiAsk(){
+  var q=document.getElementById('bAiQ').value.trim();
+  var out=document.getElementById('bAiOut');
+  if(!q){ out.textContent='Scrie întrebarea.'; return; }
+  if(!BIROU.aiKey){ out.textContent='Introdu cheia API (console.anthropic.com → API keys) sau folosește butonul de copiere pentru claude.ai.'; return; }
+  out.textContent='Se gândește…';
+  fetch('https://api.anthropic.com/v1/messages',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','x-api-key':BIROU.aiKey,
+      'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+    body:JSON.stringify({model:'claude-sonnet-4-5',max_tokens:1200,
+      system:bAiCtx(),
+      messages:[{role:'user',content:q}]})
+  }).then(function(r){return r.json();}).then(function(j){
+    if(j.error){ out.textContent='Eroare API: '+(j.error.message||JSON.stringify(j.error)); return; }
+    out.textContent=(j.content||[]).map(function(c){return c.text||'';}).join('\n');
+  }).catch(function(e){ out.textContent='Eroare de rețea: '+e.message; });
+}
+function bAiCopy(){
+  var q=document.getElementById('bAiQ').value.trim();
+  var txt=bAiCtx()+'\n\nÎntrebare: '+(q||'');
+  (navigator.clipboard?navigator.clipboard.writeText(txt):Promise.reject()).then(function(){
+    alert('Copiat. Deschide claude.ai și lipește.');
+  }).catch(function(){ prompt('Copiază manual:',txt); });
+}
+/* ---- raport web beneficiar ---- */
+function genRaportBenef(){
+  var P=S.proiect;
+  var vz=S.vizite.slice(-5).reverse();
+  var poze=[]; S.vizite.slice().reverse().some(function(v){ (v.fotos||[]).some(function(p){ poze.push(p); return poze.length>=6; }); return poze.length>=6; });
+  var ncD=S.neconf.filter(function(r){return r.status==='Deschisă';}).length;
+  var pct=document.getElementById('kProgres')?document.getElementById('kProgres').textContent:'';
+  var fin=S.pm&&S.pm.taskuri?S.pm.taskuri.filter(function(r){return r.status==='Finalizat';}).length:0;
+  var tot=S.pm&&S.pm.taskuri?S.pm.taskuri.length:0;
+  var gv=(typeof ganttHTML==='function')?ganttHTML():'';
+  var h='<!DOCTYPE html><html lang="ro"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+   +'<title>Stadiu șantier — '+esc(P.denumire||'')+'</title><style>'
+   +'body{font-family:system-ui,Arial,sans-serif;background:#f6f5f1;color:#1a1c20;margin:0;padding:0 0 40px}'
+   +'.top{background:#191b1f;color:#fff;padding:16px;display:flex;gap:12px;align-items:center}'
+   +'.top img{height:40px}.top b{font-size:16px}.top span{display:block;font-size:11px;color:#c9c9c9;letter-spacing:.1em}'
+   +'.w{max-width:720px;margin:0 auto;padding:14px}'
+   +'.c{background:#fff;border:1px solid #e3e0d8;border-radius:10px;padding:14px;margin-top:12px}'
+   +'.c h3{margin:0 0 8px;font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#1F4E78;border-bottom:2px solid #b3924f;padding-bottom:5px}'
+   +'.k{display:flex;gap:10px;flex-wrap:wrap}.k div{background:#191b1f;color:#fff;border-radius:9px;padding:10px 14px;min-width:110px}'
+   +'.k b{font-size:20px;color:#f2b705}.k span{display:block;font-size:10px;color:#ccc;text-transform:uppercase;letter-spacing:.08em}'
+   +'.vz{border-bottom:1px solid #eee;padding:8px 0}.vz b{font-size:13px}.vz p{margin:3px 0;font-size:13px}'
+   +'.ph{display:flex;gap:6px;flex-wrap:wrap}.ph img{width:100px;height:100px;object-fit:cover;border-radius:8px;border:1px solid #ddd}'
+   +'.foot{text-align:center;font-size:11px;color:#888;margin-top:18px}'
+   +'</style></head><body>'
+   +'<div class="top"><img src="'+LOGO+'"><div><b>'+esc(P.denumire||'Șantier')+'</b><span>Raport de stadiu • '+fmtDate(today())+'</span></div></div>'
+   +'<div class="w">'
+   +'<div class="c"><h3>Pe scurt</h3><div class="k">'
+   +'<div><b>'+esc(pct)+'</b><span>Documente</span></div>'
+   +(tot?('<div><b>'+fin+'/'+tot+'</b><span>Activități finalizate</span></div>'):'')
+   +'<div><b>'+S.vizite.length+'</b><span>Vizite diriginte</span></div>'
+   +'<div><b>'+ncD+'</b><span>Neconformități deschise</span></div>'
+   +'</div></div>'
+   +(gv?('<div class="c"><h3>Graficul lucrărilor</h3>'+gv+'</div>'):'')
+   +'<div class="c"><h3>Ultimele vizite pe șantier</h3>'
+   +(vz.length?vz.map(function(v){return '<div class="vz"><b>'+fmtDate(v.data)+(v.vreme?(' • '+v.vreme+(v.temp?(' '+v.temp+'°C'):'')):'')+'</b><p>'+esc(v.txt)+'</p></div>';}).join(''):'<p style="font-size:13px;color:#888">Încă nu sunt vizite consemnate.</p>')
+   +'</div>'
+   +(poze.length?('<div class="c"><h3>Imagini recente</h3><div class="ph">'+poze.map(function(p){return '<img src="'+p+'">';}).join('')+'</div></div>'):'')
+   +'<div class="foot">Raport întocmit de '+esc(P.diriginte||'ing. Parfene Andrei')+' — diriginte de șantier autorizat<br>APARM PROIECT SRL • +40 768 401 579 • parfeneandrei22@yahoo.ro</div>'
+   +'</div></body></html>';
+  var blob=new Blob([h],{type:'text/html'});
+  var nume='Stadiu_'+(P.denumire||'santier').replace(/\W+/g,'_')+'_'+today()+'.html';
+  var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=nume; a.click();
+  if(gTokenValid()&&confirm('Îl urc și în Google Drive (folderul _Rapoarte al șantierului)?')){
+    gCatFolder('_Rapoarte beneficiar').then(function(fid){
+      return gCreate({name:nume,parents:[fid],appProperties:{kind:'raport',pid:activeId()}},blob);
+    }).then(function(){ gUI('✔ Raport urcat în Drive: APARM Șantiere / … / _Rapoarte beneficiar',true); })
+    .catch(function(e){ gUI('Eroare la urcare: '+e.message,false); });
+  }
+}
+/* ---- init Birou ---- */
+function buildBirou(){
+  bBind('bNume',BIROU,'nume'); bBind('bAut',BIROU,'aut'); bBind('bVizat',BIROU,'vizat',buildTermene);
+  bBind('bAsigF',BIROU.asig,'firma'); bBind('bAsigP',BIROU.asig,'polita');
+  bBind('bAsigS',BIROU.asig,'suma'); bBind('bAsigE',BIROU.asig,'expira',buildTermene);
+  bBind('bAiKey',BIROU,'aiKey');
+  var sel=document.getElementById('bAn');
+  if(sel){ sel.innerHTML=''; bAniDisponibili().forEach(function(y){var o=document.createElement('option');o.value=y;o.textContent=y;if(+y===new Date().getFullYear())o.selected=true;sel.appendChild(o);});
+    sel.onchange=bRegPreview; bRegPreview(); }
+  bLegiBuild(); bLegiList();
+  var ta=document.getElementById('bTaxAut'), tf=document.getElementById('bTaxFin');
+  if(ta){ if(!ta.value) ta.value=S.proiect.valoare||''; ta.oninput=bTaxCalc; }
+  if(tf) tf.oninput=bTaxCalc;
+  bTaxCalc();
+}
+
 /* ================= SINCRONIZARE GOOGLE DRIVE ================= */
 var G_SCOPES='https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/drive.file';
 var G={token:null,exp:0,cid:localStorage.getItem('aparm_gcid')||'',auto:localStorage.getItem('aparm_gauto')==='1',timer:null,busy:false,fcache:{},pend:null};
@@ -2350,6 +2656,11 @@ function colectTermene(){
       if(r.status==='Deschis'){ var dd=parseData(r.termen); if(dd) t.push({txt:(r.tip||'Comunicare')+': '+String(r.txt||'').slice(0,40),d:dd}); }
     });
   }
+  var ae=parseData(BIROU.asig&&BIROU.asig.expira);
+  if(ae) t.push({txt:'Expiră ASIGURAREA profesională RC ('+(BIROU.asig.firma||'')+')',d:ae});
+  var vz=parseData(BIROU.vizat);
+  if(vz){ var vn=new Date(vz); vn.setFullYear(vn.getFullYear()+1);
+    t.push({txt:'Viza ANUALĂ a registrului de evidență la I.S.C.',d:vn}); }
   var dr=parseData(P.dataReceptie), gl=parseInt(P.garantieLuni,10);
   if(dr&&gl>0){ var fg=new Date(dr); fg.setMonth(fg.getMonth()+gl);
     t.push({txt:'Expiră garanția — organizează RECEPȚIA FINALĂ (art. 30 L10/1995: vicii ascunse 10 ani)',d:fg}); }
@@ -2503,7 +2814,7 @@ function init(){
   document.getElementById('logoTop').src=LOGO;
   buildProjSel(); buildProj(); refreshTitle(); buildFazeNav(); buildChecklist(); buildDocPick(); buildRegs(); refreshKPI(); ctStat(); storMeter();
   buildArhCat(); buildContacts();
-  migratePids(); arhRender(); arhBadge(); refreshCkFiles(buildChecklist); buildObiectii(); refreshAtt(function(){ buildPM(); buildRegs(); }); buildPM(); buildOC(); gInitUI(); buildTermene(); updateCote();
+  migratePids(); arhRender(); arhBadge(); refreshCkFiles(buildChecklist); buildObiectii(); refreshAtt(function(){ buildPM(); buildRegs(); }); buildPM(); buildOC(); gInitUI(); buildBirou(); buildTermene(); updateCote();
   document.getElementById('flux').innerHTML=
    '1. Completează <b>Proiect</b> o singură dată → datele intră automat în toate documentele.<br>'
   +'2. Parcurge <b>Checklist</b> pe faze — vezi baza legală și capitolul cărții tehnice pentru fiecare act.<br>'
